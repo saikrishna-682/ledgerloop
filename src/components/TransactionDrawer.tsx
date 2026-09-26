@@ -135,7 +135,7 @@ export function TransactionDrawer({
           placeholder={type === "income" ? "Source (e.g. September salary)" : "Where did it go?"}
           className="h-11"
         />
-        <div className="grid grid-cols-2 gap-3">
+        <div className="flex flex-col gap-3">
           <label className="flex flex-col gap-1.5">
             <span className="text-xs font-medium text-muted-foreground">Date</span>
             <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
@@ -201,14 +201,22 @@ export function TransactionDrawer({
       </div>
 
       {/* Sticky save */}
-      <div className="sticky bottom-0 -mx-4 border-t border-border/60 bg-background/95 px-4 py-3 backdrop-blur">
+      <div
+        className="sticky bottom-0 -mx-4 border-t border-border/60 bg-background/95 px-4 pt-3 backdrop-blur"
+        style={{ paddingBottom: "max(0.75rem, env(safe-area-inset-bottom))" }}
+      >
         <div className="flex items-center justify-between gap-3">
           <span className="money text-sm font-semibold">
             {amountCents !== null ? formatCents(amountCents) : "$0.00"}
           </span>
-          <Button onClick={save} disabled={!canSave || saving} className="min-w-36">
-            {saving ? "Saving…" : editing ? "Save changes" : "Log it"}
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button variant="ghost" onClick={onDone} disabled={saving}>
+              Cancel
+            </Button>
+            <Button onClick={save} disabled={!canSave || saving} className="min-w-32">
+              {saving ? "Saving…" : editing ? "Save changes" : "Log it"}
+            </Button>
+          </div>
         </div>
       </div>
     </div>

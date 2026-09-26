@@ -14,6 +14,16 @@ const Toaster = ({ ...props }: ToasterProps) => {
   return (
     <Sonner
       theme="light"
+      // Bottom (the default) sat right over the "Log it"/add-transaction
+      // button, forcing you to wait for it to clear before logging another
+      // transaction. Top-center, offset below the header (and the notch/
+      // Dynamic Island via safe-area-inset-top), doesn't block anything.
+      position="top-center"
+      // Sonner uses `mobileOffset` (not `offset`) below its internal mobile
+      // breakpoint — this app is phone-width at every screen size, so both
+      // need the same value or the toast still lands under the header there.
+      offset="max(16px, calc(env(safe-area-inset-top) + 64px))"
+      mobileOffset="max(16px, calc(env(safe-area-inset-top) + 64px))"
       className="toaster group"
       icons={{
         success: <CircleCheckIcon className="size-4" />,

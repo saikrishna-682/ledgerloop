@@ -10,6 +10,12 @@ import {
   DrawerHeader,
   DrawerTitle,
 } from "@/components/ui/drawer";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { useAuth } from "@/hooks/use-auth";
 import { api } from "@/convex/_generated/api";
 import { formatMonthKey, currentMonthKey } from "@/lib/months";
@@ -46,7 +52,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   return (
     <OpenAddContext.Provider value={() => setAddOpen(true)}>
       <div className="flex min-h-screen flex-col bg-muted/40">
-        <header className="sticky top-0 z-40 border-b border-border/60 bg-background/90 backdrop-blur-md md:mx-auto md:w-full md:max-w-md md:border-x">
+        <header
+          className="sticky top-0 z-40 border-b border-border/60 bg-background/90 backdrop-blur-md md:mx-auto md:w-full md:max-w-md md:border-x"
+          style={{ paddingTop: "env(safe-area-inset-top)" }}
+        >
           <div className="mx-auto flex h-14 w-full max-w-md items-center justify-between px-4">
             <Link to="/home" className="flex items-center gap-2.5">
               <Logo className="size-7" />
@@ -57,20 +66,33 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 {formatMonthKey(currentMonthKey())}
               </Badge>
               <ThemeToggle />
-              <Button
-                variant="ghost"
-                size="sm"
-                className="gap-1.5 text-muted-foreground"
-                onClick={async () => {
-                  await signOut();
-                  navigate("/");
-                }}
-              >
-                <span className="max-w-[12ch] truncate">
-                  {user?.name ?? user?.email ?? "You"}
-                </span>
-                <LogOut className="size-4" />
-              </Button>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button
+                    type="button"
+                    aria-label="Account menu"
+                    className="flex size-8 items-center justify-center rounded-full bg-accent text-xs font-semibold text-accent-foreground"
+                  >
+                    {(user?.name ?? user?.email ?? "?").slice(0, 1).toUpperCase()}
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-44">
+                  <DropdownMenuItem onClick={() => navigate("/profile")}>
+                    <UserRound className="size-4" />
+                    Profile
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    variant="destructive"
+                    onClick={async () => {
+                      await signOut();
+                      navigate("/");
+                    }}
+                  >
+                    <LogOut className="size-4" />
+                    Log out
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             </div>
           </div>
         </header>
@@ -81,7 +103,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           {children}
         </main>
 
-        <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-border/60 bg-background/95 backdrop-blur-md md:mx-auto md:w-full md:max-w-md md:border-x">
+        <nav
+          className="fixed inset-x-0 bottom-0 z-40 border-t border-border/60 bg-background/95 backdrop-blur-md md:mx-auto md:w-full md:max-w-md md:border-x"
+          style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
+        >
           <div className="mx-auto flex h-16 w-full max-w-md items-stretch justify-around px-2">
             <NavItem
               to="/home"
