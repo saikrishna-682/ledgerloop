@@ -362,8 +362,9 @@ describe("claimGuestData", () => {
       accountId: guestAccounts[0]._id,
     });
 
+    const token = await guest.as.mutation(api.finance.createGuestClaimToken, {});
     const real = await asNewUser(t);
-    await real.as.mutation(api.finance.claimGuestData, { guestUserId: guest.userId });
+    await real.as.mutation(api.finance.claimGuestData, { token });
 
     const myTransactions = await real.as.query(api.finance.listTransactions, {});
     expect(myTransactions).toHaveLength(1);
@@ -373,26 +374,67 @@ describe("claimGuestData", () => {
     expect(myAccounts.length).toBe(guestAccounts.length);
   });
 
-  it("refuses to claim data from a non-anonymous user", async () => {
+  // Regression test for a real IDOR: claimGuestData used to accept a raw
+  // guestUserId straight from the client. Convex ids are not secret (every
+  // query result returns them), so any signed-in user could merge *any*
+  // anonymous guest's entire financial history into their own account just
+  // by knowing or guessing that guest's id. The fix requires a token minted
+  // server-side while genuinely authenticated as that guest — so merely
+  // knowing the victim's user id (simulated here) must no longer work.
+  it("cannot be used to steal another guest's data by supplying their id as a token", async () => {
+    const t = newTest();
+    const victim = await asNewUser(t, { isAnonymous: true });
+    await victim.as.mutation(api.finance.seedIfEmpty, {});
+
+    const attacker = await asNewUser(t);
+    await attacker.as.mutation(api.finance.claimGuestData, { token: victim.userId });
+
+    const victimAccounts = await victim.as.query(api.finance.listAccounts, {});
+    const attackerAccounts = await attacker.as.query(api.finance.listAccounts, {});
+    expect(victimAccounts.length).toBeGreaterThan(0);
+    expect(attackerAccounts.length).toBe(0);
+  });
+
+  it("refuses to claim data from a non-anonymous user even with a stolen token concept", async () => {
     const t = newTest();
     const victim = await asNewUser(t, { isAnonymous: false });
     await victim.as.mutation(api.finance.seedIfEmpty, {});
 
-    const attacker = await asNewUser(t);
-    await attacker.as.mutation(api.finance.claimGuestData, { guestUserId: victim.userId });
+    // A non-anonymous user can't even mint a claim token for themselves.
+    await expect(victim.as.mutation(api.finance.createGuestClaimToken, {})).rejects.toThrow();
 
-    // Victim's data must be untouched.
-    const victimTxns = await victim.as.query(api.finance.listAccounts, {});
-    const attackerTxns = await attacker.as.query(api.finance.listAccounts, {});
-    expect(victimTxns.length).toBeGreaterThan(0);
-    expect(attackerTxns.length).toBe(0);
+    const attacker = await asNewUser(t);
+    await attacker.as.mutation(api.finance.claimGuestData, { token: "bogus-token" });
+
+    const victimAccounts = await victim.as.query(api.finance.listAccounts, {});
+    const attackerAccounts = await attacker.as.query(api.finance.listAccounts, {});
+    expect(victimAccounts.length).toBeGreaterThan(0);
+    expect(attackerAccounts.length).toBe(0);
+  });
+
+  it("is single-use — a second claim with the same token is a no-op", async () => {
+    const t = newTest();
+    const guest = await asNewUser(t, { isAnonymous: true });
+    await guest.as.mutation(api.finance.seedIfEmpty, {});
+    const token = await guest.as.mutation(api.finance.createGuestClaimToken, {});
+
+    const real = await asNewUser(t);
+    await real.as.mutation(api.finance.claimGuestData, { token });
+    const firstClaimAccounts = await real.as.query(api.finance.listAccounts, {});
+    expect(firstClaimAccounts.length).toBeGreaterThan(0);
+
+    const another = await asNewUser(t);
+    await another.as.mutation(api.finance.claimGuestData, { token });
+    const secondClaimAccounts = await another.as.query(api.finance.listAccounts, {});
+    expect(secondClaimAccounts.length).toBe(0);
   });
 
   it("is a no-op when claiming your own id", async () => {
     const t = newTest();
-    const { as, userId } = await asNewUser(t, { isAnonymous: true });
+    const { as } = await asNewUser(t, { isAnonymous: true });
     await as.mutation(api.finance.seedIfEmpty, {});
-    await expect(as.mutation(api.finance.claimGuestData, { guestUserId: userId })).resolves.not.toThrow();
+    const token = await as.mutation(api.finance.createGuestClaimToken, {});
+    await expect(as.mutation(api.finance.claimGuestData, { token })).resolves.not.toThrow();
   });
 });
 

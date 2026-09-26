@@ -17,6 +17,8 @@ import {
 import { useAuth } from "@/hooks/use-auth";
 import { Logo } from "@/components/Logo";
 import { PENDING_GUEST_CLAIM_KEY } from "@/lib/guestClaim";
+import { api } from "@/convex/_generated/api";
+import { useMutation } from "convex/react";
 import { ArrowRight, Loader2, Mail, UserX } from "lucide-react";
 import { Suspense, useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router";
@@ -85,12 +87,18 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
     }
   }, [authLoading, isAuthenticated, user?.isAnonymous, hasReturnTo, navigate, redirect]);
 
-  /** Remember the guest's user id so it survives the identity switch (and a
-   *  full page reload, for the Google OAuth redirect) that real sign-in causes. */
-  function stashGuestIdIfAny() {
+  const createGuestClaimToken = useMutation(api.finance.createGuestClaimToken);
+
+  /** Mint a short-lived, single-use claim token *while still authenticated as
+   *  the guest* and stash it so it survives the identity switch (and a full
+   *  page reload, for the Google OAuth redirect) that real sign-in causes.
+   *  A raw guest user id can't be used for this: ids aren't secret, so any
+   *  signed-in user could otherwise claim any guest's data by guessing one. */
+  async function stashGuestIdIfAny() {
     if (user?.isAnonymous) {
       try {
-        localStorage.setItem(PENDING_GUEST_CLAIM_KEY, user._id);
+        const token = await createGuestClaimToken({});
+        localStorage.setItem(PENDING_GUEST_CLAIM_KEY, token);
       } catch {
         // Best-effort — worst case the guest just starts fresh after signing in.
       }
@@ -123,7 +131,7 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
     setError(null);
     try {
       const formData = new FormData(event.currentTarget);
-      stashGuestIdIfAny();
+      await stashGuestIdIfAny();
       await signIn("email-otp", formData);
 
       // A client-side navigate() here left stale state visible (e.g. the
@@ -147,7 +155,7 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
     setIsLoading(true);
     setError(null);
     try {
-      stashGuestIdIfAny();
+      await stashGuestIdIfAny();
       await signIn("google", { redirectTo: redirect });
     } catch (error) {
       console.error("Google login error:", error);

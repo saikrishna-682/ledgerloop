@@ -7,7 +7,6 @@ import React, { StrictMode, useEffect, useState, lazy, Suspense } from "react";
 import { createRoot } from "react-dom/client";
 import { useMutation } from "convex/react";
 import { api } from "./convex/_generated/api";
-import type { Id } from "./convex/_generated/dataModel";
 import { PENDING_GUEST_CLAIM_KEY } from "@/lib/guestClaim";
 import { MoneyLoader } from "@/components/MoneyLoader";
 import { BrowserRouter, Route, Routes, useLocation } from "react-router";
@@ -49,10 +48,10 @@ function SeedOnMount({ children }: { children: React.ReactNode }) {
   const [seeded, setSeeded] = useState(false);
   useEffect(() => {
     (async () => {
-      const pendingGuestId = localStorage.getItem(PENDING_GUEST_CLAIM_KEY);
-      if (pendingGuestId) {
+      const pendingGuestToken = localStorage.getItem(PENDING_GUEST_CLAIM_KEY);
+      if (pendingGuestToken) {
         try {
-          await claimGuestData({ guestUserId: pendingGuestId as Id<"users"> });
+          await claimGuestData({ token: pendingGuestToken });
         } catch {
           // Best-effort — worst case the guest starts fresh on the new account.
         } finally {

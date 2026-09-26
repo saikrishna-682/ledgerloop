@@ -97,6 +97,16 @@ const schema = defineSchema(
       minPaymentCents: v.number(),
       archived: v.optional(v.boolean()),
     }).index("by_user", ["userId"]),
+
+    // Single-use, short-lived proof that the caller minting a real sign-in
+    // was, in the same browser, previously signed in as this exact guest —
+    // see claimGuestData in finance.ts for why this can't just trust a
+    // client-supplied guest id.
+    guestClaimTokens: defineTable({
+      token: v.string(),
+      guestUserId: v.id("users"),
+      createdAt: v.number(),
+    }).index("by_token", ["token"]),
   },
   {
     schemaValidation: false,

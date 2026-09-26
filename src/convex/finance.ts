@@ -53,21 +53,67 @@ function requireName(name: string, maxLength = 100): string {
   return trimmed;
 }
 
+/** The client only ever offers a fixed swatch palette, but every mutation is
+ * also directly callable, so this is enforced server-side too — a category
+ * color ends up in inline style values, never interpolated into raw HTML/CSS
+ * text, but a hex format is cheap insurance against that changing later. */
+function requireHexColor(color: string): string {
+  if (!/^#[0-9a-fA-F]{6}$/.test(color)) throw new Error("Color must be a hex value like #64748b");
+  return color;
+}
+
 // ---------------------------------------------------------------------------
 // Guest data claiming — a guest's data lives under their anonymous user id.
 // Signing in with email/Google authenticates as a *different* user id, so
 // without this the guest's accounts/categories/transactions would silently
 // stay orphaned under the old anonymous id. The client calls this right
 // after a guest completes real sign-in (see main.tsx), moving every row
-// over to the now-signed-in user. Only allowed from an anonymous source
-// account so this can't be used to pull another person's data.
+// over to the now-signed-in user.
+//
+// Trusting a client-supplied guestUserId directly here used to be an IDOR:
+// any signed-in user could pass *any* anonymous user's id (Convex ids are
+// not secret — they're returned in every query result) and merge that
+// guest's entire financial history into their own account. A short-lived,
+// single-use token minted only while genuinely authenticated as that guest
+// (see createGuestClaimToken below) proves the caller actually was that
+// browser session, not just that the target happens to be anonymous.
 // ---------------------------------------------------------------------------
 
-export const claimGuestData = mutation({
-  args: { guestUserId: v.id("users") },
-  handler: async (ctx, { guestUserId }) => {
+const GUEST_CLAIM_TOKEN_TTL_MS = 15 * 60 * 1000;
+
+export const createGuestClaimToken = mutation({
+  args: {},
+  handler: async (ctx) => {
     const userId = await getAuthUserId(ctx);
     if (userId === null) throw new Error("Not authenticated");
+    const user = await ctx.db.get(userId);
+    if (!user || user.isAnonymous !== true) throw new Error("Not a guest account");
+
+    const bytes = new Uint8Array(24);
+    crypto.getRandomValues(bytes);
+    const token = Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+
+    await ctx.db.insert("guestClaimTokens", { token, guestUserId: userId, createdAt: Date.now() });
+    return token;
+  },
+});
+
+export const claimGuestData = mutation({
+  args: { token: v.string() },
+  handler: async (ctx, { token }) => {
+    const userId = await getAuthUserId(ctx);
+    if (userId === null) throw new Error("Not authenticated");
+
+    const claim = await ctx.db
+      .query("guestClaimTokens")
+      .withIndex("by_token", (q) => q.eq("token", token))
+      .first();
+    // Consume immediately (before any await that could race a second call)
+    // so the token can't be replayed even if the rest of this fails.
+    if (claim) await ctx.db.delete(claim._id);
+    if (!claim || Date.now() - claim.createdAt > GUEST_CLAIM_TOKEN_TTL_MS) return;
+
+    const guestUserId = claim.guestUserId;
     if (userId === guestUserId) return;
 
     const guest = await ctx.db.get(guestUserId);
@@ -183,7 +229,8 @@ export const createCategory = mutation({
     const userId = await getAuthUserId(ctx);
     if (userId === null) throw new Error("Not authenticated");
     const name = requireName(args.name);
-    return await ctx.db.insert("categories", { userId, ...args, name, isSystem: false });
+    const color = requireHexColor(args.color);
+    return await ctx.db.insert("categories", { userId, ...args, name, color, isSystem: false });
   },
 });
 
