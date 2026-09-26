@@ -1,5 +1,6 @@
 import { useAuth } from "@/hooks/use-auth";
 import { markSessionUnlocked } from "@/lib/appLockSession";
+import { StatementImportCard } from "@/components/StatementImport";
 import { api } from "@/convex/_generated/api";
 import type { Doc, Id } from "@/convex/_generated/dataModel";
 import { Button } from "@/components/ui/button";
@@ -47,6 +48,7 @@ import {
   Check,
   CreditCard,
   Download,
+  FileUp,
   Info,
   Landmark,
   Lock,
@@ -138,6 +140,8 @@ export default function Profile() {
       <DebtsCard />
       {/* Money guidelines */}
       {stats && <MoneyGuidelinesCard stats={stats} age={settings?.age} />}
+      {/* Import */}
+      <ImportStatementCard />
       {/* Export */}
       <ExportDataCard />
 
@@ -1540,6 +1544,26 @@ function ExportDataCard() {
           <Download className="size-4" /> Export CSV
         </Button>
       </CardHeader>
+    </Card>
+  );
+}
+
+function ImportStatementCard() {
+  return (
+    <Card className="card-soft rounded-2xl border-border/60">
+      <CardHeader className="pb-2">
+        <CardTitle className="flex items-center gap-2 text-base">
+          <FileUp className="size-4 text-primary" />
+          Import statement
+        </CardTitle>
+        <CardDescription>
+          A bank or card CSV/PDF export — parsed entirely on this device, never uploaded. You'll
+          review every transaction before anything is saved.
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <StatementImportCard />
+      </CardContent>
     </Card>
   );
 }
