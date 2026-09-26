@@ -1,5 +1,7 @@
 import { Button } from "@/components/ui/button";
+import { Calendar } from "@/components/ui/calendar";
 import { Input } from "@/components/ui/input";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Textarea } from "@/components/ui/textarea";
 import { api } from "@/convex/_generated/api";
 import type { Doc, Id } from "@/convex/_generated/dataModel";
@@ -8,9 +10,28 @@ import { todayStr } from "@/lib/months";
 import { centsToInput, formatCents, parseAmountToCents } from "@/lib/money";
 import { cn } from "@/lib/utils";
 import { useMutation, useQuery } from "convex/react";
-import { ArrowDownLeft, ArrowUpRight } from "lucide-react";
+import { ArrowDownLeft, ArrowUpRight, CalendarIcon } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
+
+/** "YYYY-MM-DD" -> local midnight Date (react-day-picker works in local time;
+ *  a UTC-constructed date would shift a day in negative-offset timezones). */
+function parseDateStr(s: string): Date {
+  const [y, m, d] = s.split("-").map(Number);
+  return new Date(y, m - 1, d);
+}
+function formatDateStr(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(
+    d.getDate(),
+  ).padStart(2, "0")}`;
+}
+function formatDateLabel(s: string): string {
+  return parseDateStr(s).toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+}
 
 export function TransactionDrawer({
   onDone,
@@ -36,6 +57,7 @@ export function TransactionDrawer({
     editing?.accountId ?? null,
   );
   const [saving, setSaving] = useState(false);
+  const [datePopoverOpen, setDatePopoverOpen] = useState(false);
 
   const cats = useMemo(
     () => categories.filter((c) => c.kind === (type === "income" ? "income" : "expense")),
@@ -136,10 +158,32 @@ export function TransactionDrawer({
           className="h-11"
         />
         <div className="flex flex-col gap-3">
-          <label className="flex flex-col gap-1.5">
+          <div className="flex flex-col gap-1.5">
             <span className="text-xs font-medium text-muted-foreground">Date</span>
-            <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
-          </label>
+            <Popover open={datePopoverOpen} onOpenChange={setDatePopoverOpen}>
+              <PopoverTrigger asChild>
+                <button
+                  type="button"
+                  className="border-input bg-background flex h-9 w-full items-center gap-2 rounded-md border px-3 text-sm shadow-xs outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                  <CalendarIcon className="size-4 shrink-0 text-muted-foreground" />
+                  <span className="truncate">{formatDateLabel(date)}</span>
+                </button>
+              </PopoverTrigger>
+              <PopoverContent align="start" className="w-auto p-0">
+                <Calendar
+                  mode="single"
+                  selected={parseDateStr(date)}
+                  onSelect={(d) => {
+                    if (!d) return;
+                    setDate(formatDateStr(d));
+                    setDatePopoverOpen(false);
+                  }}
+                  autoFocus
+                />
+              </PopoverContent>
+            </Popover>
+          </div>
           <label className="flex flex-col gap-1.5">
             <span className="text-xs font-medium text-muted-foreground">Account</span>
             <select
