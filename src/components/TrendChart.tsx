@@ -1,4 +1,9 @@
 import { ChartContainer, ChartTooltip } from "@/components/ui/chart";
+import {
+  glassTooltipContentStyle,
+  glassTooltipItemStyle,
+  glassTooltipLabelStyle,
+} from "@/lib/chartTooltip";
 import { formatMonthKeyShort } from "@/lib/months";
 import { formatCents } from "@/lib/money";
 import { Bar, BarChart, CartesianGrid, XAxis } from "recharts";
@@ -24,11 +29,9 @@ export function TrendChart({
         <ChartTooltip
           cursor={false}
           formatter={(value) => formatCents(Number(value))}
-          contentStyle={{
-            borderRadius: 12,
-            border: "1px solid var(--border)",
-            fontSize: 12,
-          }}
+          contentStyle={glassTooltipContentStyle}
+          itemStyle={glassTooltipItemStyle}
+          labelStyle={glassTooltipLabelStyle}
         />
         <Bar dataKey="incomeCents" fill="var(--color-incomeCents)" radius={4} />
         <Bar dataKey="spentCents" fill="var(--color-spentCents)" radius={4} />

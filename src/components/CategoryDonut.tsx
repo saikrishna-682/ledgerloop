@@ -1,4 +1,9 @@
 import { ChartContainer, ChartTooltip } from "@/components/ui/chart";
+import {
+  glassTooltipContentStyle,
+  glassTooltipItemStyle,
+  glassTooltipLabelStyle,
+} from "@/lib/chartTooltip";
 import { formatCents } from "@/lib/money";
 import { Cell, Pie, PieChart } from "recharts";
 
@@ -14,11 +19,9 @@ export function CategoryDonut({
       <PieChart>
         <ChartTooltip
           formatter={(value) => formatCents(Number(value))}
-          contentStyle={{
-            borderRadius: 12,
-            border: "1px solid var(--border)",
-            fontSize: 12,
-          }}
+          contentStyle={glassTooltipContentStyle}
+          itemStyle={glassTooltipItemStyle}
+          labelStyle={glassTooltipLabelStyle}
         />
         <Pie
           data={data}
