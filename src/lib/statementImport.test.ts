@@ -64,6 +64,17 @@ describe("parseCsvStatement", () => {
     const { transactions } = parseCsvStatement(csv);
     expect(transactions).toEqual([]);
   });
+
+  it("handles a semicolon-delimited CSV with European-formatted amounts (comma decimal)", () => {
+    // Day > 12 sidesteps the separate, unrelated DD/MM-vs-MM/DD ambiguity —
+    // this test is only about delimiter and decimal-format handling.
+    const csv = "Date;Description;Amount\n03/15/2026;Grocery Store;-45,67\n03/16/2026;Salary;1.500,00";
+    const { transactions } = parseCsvStatement(csv);
+    expect(transactions).toEqual([
+      { date: "2026-03-15", merchant: "Grocery Store", amountCents: 4567, type: "expense" },
+      { date: "2026-03-16", merchant: "Salary", amountCents: 150000, type: "income" },
+    ]);
+  });
 });
 
 describe("parsePdfStatementText", () => {

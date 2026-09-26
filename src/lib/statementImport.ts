@@ -17,13 +17,22 @@ export interface StatementParseResult {
 // Shared helpers
 // ---------------------------------------------------------------------------
 
-/** Parses "$1,234.56", "(45.67)" (accounting negative), "-45.67", "45.67"
- * into integer cents. Returns null if the string isn't a recognizable amount. */
+/** Parses "$1,234.56", "1.234,56" (European: comma decimal, period thousands),
+ * "€45,67", "(45.67)" (accounting negative), "-45.67" into integer cents.
+ * Returns null if the string isn't a recognizable amount. */
 function parseAmountToCents(raw: string): number | null {
   const trimmed = raw.trim();
   if (!trimmed) return null;
   const negativeParens = /^\(.*\)$/.test(trimmed);
-  const cleaned = trimmed.replace(/[()$,]/g, "").trim();
+  let cleaned = trimmed.replace(/[()$€£\s]/g, "").trim();
+
+  // European convention: comma is the decimal separator, period (if present)
+  // groups thousands — e.g. "1.234,56". Distinguished from the US
+  // convention by which mark is the *last* separator before exactly 2
+  // trailing digits.
+  const europeanDecimal = /,\d{2}$/.test(cleaned) && !/\.\d{1,2}$/.test(cleaned);
+  cleaned = europeanDecimal ? cleaned.replace(/\./g, "").replace(",", ".") : cleaned.replace(/,/g, "");
+
   const value = Number(cleaned);
   if (!Number.isFinite(value)) return null;
   const cents = Math.round(Math.abs(value) * 100);
@@ -190,7 +199,11 @@ export function parseCsvStatement(text: string, flipSign = false): StatementPars
 
 const DATE_TOKEN_RE =
   /^\d{1,2}[/-]\d{1,2}(?:[/-]\d{2,4})?$|^\d{1,2}-[A-Za-z]{3,9}-\d{2,4}$/;
-const AMOUNT_TOKEN_RE = /^\(?-?\$?\d[\d,]*\.\d{2}\)?$/;
+// Matches both "1,234.56" (US) and "1.234,56" (European) shaped tokens —
+// i.e. a currency-symbol-optional number ending in a 2-digit fraction after
+// either a period or a comma, with the other character (if present) used as
+// a thousands grouping mark.
+const AMOUNT_TOKEN_RE = /^\(?-?[$€£]?\d[\d.,]*[.,]\d{2}\)?$/;
 
 /** Splits a statement line into {date, description, amount}. Two things
  * real statements do that break a naive "date first, amount last" regex:

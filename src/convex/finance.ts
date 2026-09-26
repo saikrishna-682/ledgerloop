@@ -296,6 +296,47 @@ export const listAccounts = query({
   },
 });
 
+// Real, transaction-aware current balance per account — startingBalanceCents
+// alone (what the client used to display directly) never changes as
+// transactions are logged, so it silently drifted from reality the moment
+// anyone logged a single transaction. Signed so callers never need to
+// special-case account kind: a credit account's balance is its amount owed,
+// stored negative (an expense increases what's owed = more negative; a
+// payment, logged as income against that account, reduces it), exactly like
+// every other liability in a net-worth sum. Non-credit accounts are plain
+// signed cash.
+export const getAccountBalances = query({
+  args: {},
+  handler: async (ctx) => {
+    const userId = await getAuthUserId(ctx);
+    if (userId === null) throw new Error("Not authenticated");
+    const [accounts, transactions] = await Promise.all([
+      ctx.db.query("accounts").withIndex("by_user", (q) => q.eq("userId", userId)).collect(),
+      ctx.db.query("transactions").withIndex("by_user_date", (q) => q.eq("userId", userId)).collect(),
+    ]);
+    const today = new Date().toISOString().slice(0, 10);
+    const active = accounts.filter((a) => !a.archived);
+    const kindById = new Map(active.map((a) => [a._id, a.kind]));
+    const balances = new Map<Id<"accounts">, number>(
+      active.map((a) => [a._id, a.kind === "credit" ? -a.startingBalanceCents : a.startingBalanceCents]),
+    );
+
+    for (const t of transactions) {
+      if (t.date > today) continue;
+      if (kindById.get(t.accountId) === undefined) continue; // archived or deleted account
+      // Income adds, expense subtracts — uniformly for every account kind.
+      // The only kind-specific thing is the *starting* sign above (credit
+      // starts negative, as debt); from there it's the same arithmetic:
+      // a credit purchase (expense) makes the balance more negative (owe
+      // more), a payment (income) makes it less negative (owe less).
+      const delta = t.type === "income" ? t.amountCents : -t.amountCents;
+      balances.set(t.accountId, balances.get(t.accountId)! + delta);
+    }
+
+    return active.map((a) => ({ accountId: a._id, balanceCents: balances.get(a._id)! }));
+  },
+});
+
 export const createAccount = mutation({
   args: {
     name: v.string(),
@@ -731,13 +772,19 @@ export const getMonthlyStats = query({
     for (const t of transactions) {
       if (t.date > today) continue;
       const beforeMonth = t.date < monthStart;
+      const isCreditAccount = accountKind.get(t.accountId) === "credit";
       if (t.type === "income") {
-        balanceCents += t.amountCents;
-        if (beforeMonth) balanceBeforeMonthCents += t.amountCents;
+        // Symmetric with the expense side below: a transaction posted to a
+        // credit-kind account never moves cash-on-hand either direction —
+        // only non-credit accounts represent actual cash.
+        if (!isCreditAccount) {
+          balanceCents += t.amountCents;
+          if (beforeMonth) balanceBeforeMonthCents += t.amountCents;
+        }
         if (t.date.startsWith(monthKey)) incomeCents += t.amountCents;
       } else {
         // Credit-card spending is a liability, not cash out the door.
-        if (accountKind.get(t.accountId) !== "credit") {
+        if (!isCreditAccount) {
           balanceCents -= t.amountCents;
           if (beforeMonth) balanceBeforeMonthCents -= t.amountCents;
         }

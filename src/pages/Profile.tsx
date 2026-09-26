@@ -418,6 +418,8 @@ function BufferSetting({
 }
 
 function AccountsCard({ accounts }: { accounts: Doc<"accounts">[] }) {
+  const balances = useQuery(api.finance.getAccountBalances);
+  const balancesByAccount = new Map(balances?.map((b) => [b.accountId, b.balanceCents]));
   const create = useMutation(api.finance.createAccount);
   const update = useMutation(api.finance.updateAccount);
   const remove = useMutation(api.finance.deleteAccount);
@@ -521,8 +523,9 @@ function AccountsCard({ accounts }: { accounts: Doc<"accounts">[] }) {
                 <p className="text-xs capitalize text-muted-foreground">{a.kind}</p>
               </div>
               <span className="money text-sm font-semibold">
-                {a.kind === "credit" ? "−" : ""}
-                {formatCents(Math.abs(a.startingBalanceCents))}
+                {balancesByAccount.has(a._id)
+                  ? formatCents(balancesByAccount.get(a._id)!)
+                  : formatCents(a.kind === "credit" ? -a.startingBalanceCents : a.startingBalanceCents)}
               </span>
               <Button variant="ghost" size="icon" className="size-8" onClick={() => openEdit(a)}>
                 <Pencil className="size-3.5 text-muted-foreground" />

@@ -25,7 +25,7 @@ import {
   type StatementParseResult,
 } from "@/lib/statementImport";
 import { useMutation, useQuery } from "convex/react";
-import { FileUp, Upload } from "lucide-react";
+import { FileUp, Upload, X } from "lucide-react";
 import { useRef, useState } from "react";
 import { toast } from "sonner";
 
@@ -175,7 +175,16 @@ export function StatementImportCard() {
 
       <Drawer open={rows !== null} onOpenChange={(o) => !o && closeReview()}>
         <DrawerContent className="max-h-[92dvh]">
-          <DrawerHeader>
+          <DrawerHeader className="relative">
+            <button
+              type="button"
+              aria-label="Cancel import"
+              onClick={closeReview}
+              data-vaul-no-drag
+              className="absolute right-4 top-4 flex size-7 items-center justify-center rounded-full text-muted-foreground hover:bg-muted"
+            >
+              <X className="size-4" />
+            </button>
             <DrawerTitle>Review before importing</DrawerTitle>
             <DrawerDescription>
               Best-effort extraction — check dates, amounts, and categories before confirming.

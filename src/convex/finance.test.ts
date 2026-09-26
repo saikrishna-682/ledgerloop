@@ -18,6 +18,20 @@ function newTest() {
   return convexTest(schema, modules);
 }
 
+/** Seeds a fresh user and hands back their default checking/credit accounts
+ * and a couple of default categories, for tests that need real ids. */
+async function seededUser(t: ReturnType<typeof convexTest>) {
+  const { as, userId } = await asNewUser(t);
+  await as.mutation(api.finance.seedIfEmpty, {});
+  const accounts = await as.query(api.finance.listAccounts, {});
+  const categories = await as.query(api.finance.listCategories, {});
+  const checking = accounts.find((a) => a.kind === "checking")!;
+  const salary = categories.find((c) => c.name === "Salary")!;
+  const groceries = categories.find((c) => c.name === "Groceries")!; // essential
+  const diningOut = categories.find((c) => c.name === "Dining out")!; // not essential
+  return { as, userId, checking, salary, groceries, diningOut };
+}
+
 describe("seedIfEmpty", () => {
   it("creates default categories, accounts, and settings exactly once", async () => {
     const t = newTest();
@@ -54,18 +68,6 @@ describe("seedIfEmpty", () => {
 });
 
 describe("getMonthlyStats — safe-to-spend math", () => {
-  async function seededUser(t: ReturnType<typeof convexTest>) {
-    const { as, userId } = await asNewUser(t);
-    await as.mutation(api.finance.seedIfEmpty, {});
-    const accounts = await as.query(api.finance.listAccounts, {});
-    const categories = await as.query(api.finance.listCategories, {});
-    const checking = accounts.find((a) => a.kind === "checking")!;
-    const salary = categories.find((c) => c.name === "Salary")!;
-    const groceries = categories.find((c) => c.name === "Groceries")!; // essential
-    const diningOut = categories.find((c) => c.name === "Dining out")!; // not essential
-    return { as, userId, checking, salary, groceries, diningOut };
-  }
-
   it("does not double-count this month's income into the balance carried in", async () => {
     const t = newTest();
     const { as, checking, salary } = await seededUser(t);
@@ -174,6 +176,126 @@ describe("getMonthlyStats — safe-to-spend math", () => {
     expect(stats.balanceCents).toBe(200000);
     // ...but it still shows up as spending for budgeting purposes.
     expect(stats.spentCents).toBe(15000);
+  });
+
+  it("also excludes an income transaction posted to a credit account from the cash balance", async () => {
+    // Regression test: the expense side already excluded credit accounts
+    // from balanceCents, but the income side didn't — an income transaction
+    // logged against a credit account (unusual, but not disallowed) used to
+    // inflate cash balance as if it were real money in a checking account.
+    const t = newTest();
+    const { as, checking, salary } = await seededUser(t);
+    const accounts = await as.query(api.finance.listAccounts, {});
+    const creditCard = accounts.find((a) => a.kind === "credit")!;
+    const monthKey = new Date().toISOString().slice(0, 7);
+
+    await as.mutation(api.finance.addTransaction, {
+      type: "income",
+      amountCents: 200000,
+      date: `${monthKey}-01`,
+      merchant: "Pay",
+      categoryId: salary._id,
+      accountId: checking._id,
+    });
+    await as.mutation(api.finance.addTransaction, {
+      type: "income",
+      amountCents: 5000,
+      date: `${monthKey}-02`,
+      merchant: "Credit card refund",
+      categoryId: salary._id,
+      accountId: creditCard._id,
+    });
+
+    const stats = await as.query(api.finance.getMonthlyStats, { monthKey });
+    expect(stats.balanceCents).toBe(200000); // the credit-account income must not count as cash
+  });
+});
+
+describe("getAccountBalances", () => {
+  it("computes a running cash balance from starting balance + transactions", async () => {
+    const t = newTest();
+    const { as, checking, salary, diningOut } = await seededUser(t);
+    const today = new Date().toISOString().slice(0, 10);
+
+    await as.mutation(api.finance.addTransaction, {
+      type: "income",
+      amountCents: 200000,
+      date: today,
+      merchant: "Pay",
+      categoryId: salary._id,
+      accountId: checking._id,
+    });
+    await as.mutation(api.finance.addTransaction, {
+      type: "expense",
+      amountCents: 3000,
+      date: today,
+      merchant: "Dinner",
+      categoryId: diningOut._id,
+      accountId: checking._id,
+    });
+
+    const balances = await as.query(api.finance.getAccountBalances, {});
+    const checkingBalance = balances.find((b) => b.accountId === checking._id)!;
+    expect(checkingBalance.balanceCents).toBe(0 + 200000 - 3000);
+  });
+
+  it("tracks a credit account's owed balance growing with spending and shrinking with payments", async () => {
+    // Regression test: the account list used to display raw
+    // startingBalanceCents directly, completely frozen — a credit card's
+    // shown balance never grew as the user actually spent on it.
+    const t = newTest();
+    const { as, diningOut } = await seededUser(t);
+    const accounts = await as.query(api.finance.listAccounts, {});
+    const creditCard = accounts.find((a) => a.kind === "credit")!;
+    const today = new Date().toISOString().slice(0, 10);
+
+    const before = await as.query(api.finance.getAccountBalances, {});
+    const startingOwed = -before.find((b) => b.accountId === creditCard._id)!.balanceCents;
+
+    await as.mutation(api.finance.addTransaction, {
+      type: "expense",
+      amountCents: 15000,
+      date: today,
+      merchant: "New purchase",
+      categoryId: diningOut._id,
+      accountId: creditCard._id,
+    });
+    const afterPurchase = await as.query(api.finance.getAccountBalances, {});
+    const owedAfterPurchase = -afterPurchase.find((b) => b.accountId === creditCard._id)!.balanceCents;
+    expect(owedAfterPurchase).toBe(startingOwed + 15000); // owes more after spending
+
+    await as.mutation(api.finance.addTransaction, {
+      type: "income",
+      amountCents: 5000,
+      date: today,
+      merchant: "Payment",
+      categoryId: diningOut._id,
+      accountId: creditCard._id,
+    });
+    const afterPayment = await as.query(api.finance.getAccountBalances, {});
+    const owedAfterPayment = -afterPayment.find((b) => b.accountId === creditCard._id)!.balanceCents;
+    expect(owedAfterPayment).toBe(owedAfterPurchase - 5000); // owes less after paying
+  });
+
+  it("ignores future-dated transactions and excludes archived accounts", async () => {
+    const t = newTest();
+    const { as, checking, salary } = await seededUser(t);
+    const farFuture = "2099-01-01";
+
+    await as.mutation(api.finance.addTransaction, {
+      type: "income",
+      amountCents: 999999,
+      date: farFuture,
+      merchant: "Future pay",
+      categoryId: salary._id,
+      accountId: checking._id,
+    });
+    const balances = await as.query(api.finance.getAccountBalances, {});
+    expect(balances.find((b) => b.accountId === checking._id)!.balanceCents).toBe(0);
+
+    await as.mutation(api.finance.deleteAccount, { id: checking._id });
+    const afterArchive = await as.query(api.finance.getAccountBalances, {});
+    expect(afterArchive.find((b) => b.accountId === checking._id)).toBeUndefined();
   });
 });
 

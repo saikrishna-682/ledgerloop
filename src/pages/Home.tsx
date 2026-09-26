@@ -1,5 +1,6 @@
 import { useOpenAddTxn } from "@/components/AppShell";
 import { BudgetsProgress } from "@/components/BudgetsProgress";
+import { GoalsProgress } from "@/components/GoalsProgress";
 import { MarketNews } from "@/components/MarketNews";
 import { RecurringCard } from "@/components/RecurringCard";
 import { Card, CardContent } from "@/components/ui/card";
@@ -13,6 +14,7 @@ import { currentMonthKey, friendlyDate, todayStr } from "@/lib/months";
 import { formatCents } from "@/lib/money";
 import { cn } from "@/lib/utils";
 import { detectRecurring } from "@/lib/recurring";
+import { estimateMonthlyInterestCents } from "@/lib/debtPayoff";
 import { useQuery } from "convex/react";
 import {
   ArrowDownLeft,
@@ -47,6 +49,8 @@ export default function Home() {
   const trend = useQuery(api.finance.getTrend, { months: 6 }) ?? [];
   const budgets = useQuery(api.finance.listBudgetsWithProgress, { monthKey }) ?? [];
   const debts = useQuery(api.finance.listDebts) ?? [];
+  const accountBalances = useQuery(api.finance.getAccountBalances) ?? [];
+  const goals = useQuery(api.finance.listGoals) ?? [];
   const recurring = useMemo(() => detectRecurring(recent), [recent]);
   const openAdd = useOpenAddTxn();
 
@@ -73,7 +77,24 @@ export default function Home() {
   }
 
   const totalDebtCents = debts.reduce((sum, d) => sum + d.balanceCents, 0);
-  const netWorthCents = stats.balanceCents - totalDebtCents;
+  const totalMonthlyInterestCents = debts.reduce(
+    (sum, d) =>
+      sum +
+      estimateMonthlyInterestCents({
+        id: d._id,
+        name: d.name,
+        balanceCents: d.balanceCents,
+        aprBps: d.aprBps,
+        minPaymentCents: d.minPaymentCents,
+      }),
+    0,
+  );
+  // Sum of every account's own signed balance (getAccountBalances already
+  // treats a credit account's balance as negative — what's owed — so this
+  // correctly reflects ongoing credit-card spending, unlike stats.balanceCents
+  // which is deliberately cash-only for the safe-to-spend calculation).
+  const totalAccountsCents = accountBalances.reduce((sum, a) => sum + a.balanceCents, 0);
+  const netWorthCents = totalAccountsCents - totalDebtCents;
   const safeRemaining = stats.safeRemainingCents;
   const safeTotal = Math.max(1, stats.safeToSpendCents);
   const usedPct = Math.min(100, Math.round((stats.safeSpentCents / safeTotal) * 100));
@@ -166,15 +187,18 @@ export default function Home() {
           </div>
           {totalDebtCents > 0 && (
             <span className="text-right text-xs text-muted-foreground">
-              {formatCents(stats.balanceCents)} in accounts
-              <br />− {formatCents(totalDebtCents)} in debts
+              {formatCents(totalAccountsCents)} in accounts
+              <br />− {formatCents(totalDebtCents)} in other debts
             </span>
           )}
         </CardContent>
       </Card>
 
       {/* Insights */}
-      {(insights.biggestExpense || insights.topMerchant || insights.monthOverMonthPct !== null) && (
+      {(insights.biggestExpense ||
+        insights.topMerchant ||
+        insights.monthOverMonthPct !== null ||
+        totalMonthlyInterestCents > 0) && (
         <Card className="card-soft rounded-2xl border-border/60">
           <div className="flex items-center gap-1.5 px-5 pb-1 pt-4">
             <Lightbulb className="size-4 text-primary" />
@@ -207,6 +231,18 @@ export default function Home() {
                   {Math.abs(insights.monthOverMonthPct)}% {insights.monthOverMonthPct > 0 ? "higher" : "lower"}
                 </span>{" "}
                 than last month
+              </p>
+            )}
+            {totalMonthlyInterestCents > 0 && (
+              <p>
+                Your debts are costing about{" "}
+                <span className="money font-medium text-destructive">
+                  {formatCents(totalMonthlyInterestCents)}
+                </span>{" "}
+                in interest this month —{" "}
+                <Link to="/profile" className="font-medium text-primary hover:underline">
+                  see the payoff plan
+                </Link>
               </p>
             )}
           </CardContent>
@@ -286,6 +322,9 @@ export default function Home() {
 
       {/* Budgets */}
       <BudgetsProgress budgets={budgets} />
+
+      {/* Savings goals */}
+      <GoalsProgress goals={goals} />
 
       {/* Monthly trend */}
       {trend.some((t) => t.incomeCents > 0 || t.spentCents > 0) && (
