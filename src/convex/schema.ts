@@ -76,6 +76,14 @@ const schema = defineSchema(
       userId: v.id("users"),
       bufferPct: v.number(), // 0-100, % of monthly income held back as buffer
       age: v.optional(v.number()), // used only for the age-based stock allocation guideline
+      // App-lock PIN — a local "quick glance" gate layered on top of real
+      // auth, not a replacement for it. Never returned to the client raw
+      // (see getSettings, which whitelists fields); only compared
+      // server-side in verifyPin.
+      pinHash: v.optional(v.string()),
+      pinSalt: v.optional(v.string()),
+      pinFailedAttempts: v.optional(v.number()),
+      pinLockedUntil: v.optional(v.number()),
     }).index("by_user", ["userId"]),
 
     // One row per category the user has set a monthly target for. The target

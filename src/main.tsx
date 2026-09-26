@@ -9,6 +9,7 @@ import { useMutation } from "convex/react";
 import { api } from "./convex/_generated/api";
 import { PENDING_GUEST_CLAIM_KEY } from "@/lib/guestClaim";
 import { MoneyLoader } from "@/components/MoneyLoader";
+import { AppLock } from "@/components/AppLock";
 import { BrowserRouter, Route, Routes, useLocation } from "react-router";
 import "./index.css";
 
@@ -31,9 +32,11 @@ function AppPage({ children }: { children: React.ReactNode }) {
   return (
     <RequireAuth redirectImmediately>
       <SeedOnMount>
-        <Suspense fallback={<RouteLoading />}>
-          <AppShell>{children}</AppShell>
-        </Suspense>
+        <AppLock>
+          <Suspense fallback={<RouteLoading />}>
+            <AppShell>{children}</AppShell>
+          </Suspense>
+        </AppLock>
       </SeedOnMount>
     </RequireAuth>
   );

@@ -438,6 +438,72 @@ describe("claimGuestData", () => {
   });
 });
 
+describe("app lock PIN", () => {
+  it("is disabled until set, and getSettings never exposes the hash", async () => {
+    const t = newTest();
+    const { as } = await asNewUser(t);
+    expect(await as.query(api.finance.isPinEnabled, {})).toBe(false);
+
+    await as.mutation(api.finance.setPin, { pin: "1234" });
+    expect(await as.query(api.finance.isPinEnabled, {})).toBe(true);
+
+    const settings = await as.query(api.finance.getSettings, {});
+    expect(settings).not.toHaveProperty("pinHash");
+    expect(settings).not.toHaveProperty("pinSalt");
+  });
+
+  it("rejects non-numeric or wrong-length PINs", async () => {
+    const t = newTest();
+    const { as } = await asNewUser(t);
+    await expect(as.mutation(api.finance.setPin, { pin: "abcd" })).rejects.toThrow();
+    await expect(as.mutation(api.finance.setPin, { pin: "123" })).rejects.toThrow();
+  });
+
+  it("verifies a correct PIN and rejects an incorrect one", async () => {
+    const t = newTest();
+    const { as } = await asNewUser(t);
+    await as.mutation(api.finance.setPin, { pin: "4242" });
+
+    expect(await as.mutation(api.finance.verifyPin, { pin: "0000" })).toMatchObject({ ok: false });
+    expect(await as.mutation(api.finance.verifyPin, { pin: "4242" })).toMatchObject({ ok: true });
+  });
+
+  it("locks out after repeated wrong attempts", async () => {
+    const t = newTest();
+    const { as } = await asNewUser(t);
+    await as.mutation(api.finance.setPin, { pin: "4242" });
+
+    for (let i = 0; i < 5; i++) {
+      await as.mutation(api.finance.verifyPin, { pin: "0000" });
+    }
+    // The 5th failure should trigger a lockout even with the correct PIN.
+    const result = await as.mutation(api.finance.verifyPin, { pin: "4242" });
+    expect(result.ok).toBe(false);
+    expect((result as { lockedForSeconds?: number }).lockedForSeconds).toBeGreaterThan(0);
+  });
+
+  it("is scoped per user — one user's PIN can't verify against another's", async () => {
+    const t = newTest();
+    const alice = await asNewUser(t);
+    const bob = await asNewUser(t);
+    await alice.as.mutation(api.finance.setPin, { pin: "1111" });
+    await bob.as.mutation(api.finance.setPin, { pin: "2222" });
+
+    expect(await bob.as.mutation(api.finance.verifyPin, { pin: "1111" })).toMatchObject({ ok: false });
+    expect(await alice.as.mutation(api.finance.verifyPin, { pin: "1111" })).toMatchObject({ ok: true });
+  });
+
+  it("clearPin turns the lock off", async () => {
+    const t = newTest();
+    const { as } = await asNewUser(t);
+    await as.mutation(api.finance.setPin, { pin: "1234" });
+    await as.mutation(api.finance.clearPin, {});
+    expect(await as.query(api.finance.isPinEnabled, {})).toBe(false);
+    // With no PIN set, verifyPin has nothing to gate.
+    expect(await as.mutation(api.finance.verifyPin, { pin: "0000" })).toMatchObject({ ok: true });
+  });
+});
+
 describe("budgets", () => {
   it("tracks spent/remaining/pctUsed and flags a projected overspend", async () => {
     const t = newTest();

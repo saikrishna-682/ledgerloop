@@ -1,8 +1,17 @@
 import { getAuthUserId } from "@convex-dev/auth/server";
+import { sha256 } from "@oslojs/crypto/sha2";
 import { v } from "convex/values";
 import type { Id } from "./_generated/dataModel";
 import { mutation, query } from "./_generated/server";
 import { daysInMonth as daysInMonthOf } from "../lib/months";
+
+function toHex(bytes: Uint8Array): string {
+  return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+function hashPin(pin: string, salt: string): string {
+  return toHex(sha256(new TextEncoder().encode(`${salt}:${pin}`)));
+}
 
 // ---------------------------------------------------------------------------
 // Money rule: every amount is stored as integer cents ($12.34 -> 1234).
@@ -350,7 +359,101 @@ export const getSettings = query({
       .query("settings")
       .withIndex("by_user", (q) => q.eq("userId", userId))
       .first();
-    return row ?? { bufferPct: DEFAULT_BUFFER_PCT, age: undefined };
+    // Whitelisted on purpose: pinHash/pinSalt must never reach the client —
+    // a 4-6 digit PIN's hash is trivially brute-forceable offline once the
+    // salt is known, which defeats verifyPin's server-side rate limiting.
+    return {
+      bufferPct: row?.bufferPct ?? DEFAULT_BUFFER_PCT,
+      age: row?.age,
+    };
+  },
+});
+
+// ---------------------------------------------------------------------------
+// App-lock PIN — a local "quick glance" gate on top of real auth (not a
+// replacement for it). The PIN itself never leaves the server: setPin only
+// stores a salted hash, and verifyPin is the only thing that can check a
+// guess, with a short lockout after repeated failures.
+// ---------------------------------------------------------------------------
+
+export const isPinEnabled = query({
+  args: {},
+  handler: async (ctx) => {
+    const userId = await getAuthUserId(ctx);
+    if (userId === null) throw new Error("Not authenticated");
+    const row = await ctx.db.query("settings").withIndex("by_user", (q) => q.eq("userId", userId)).first();
+    return row?.pinHash !== undefined;
+  },
+});
+
+export const setPin = mutation({
+  args: { pin: v.string() },
+  handler: async (ctx, { pin }) => {
+    const userId = await getAuthUserId(ctx);
+    if (userId === null) throw new Error("Not authenticated");
+    if (!/^\d{4,6}$/.test(pin)) throw new Error("PIN must be 4-6 digits");
+
+    const saltBytes = new Uint8Array(16);
+    crypto.getRandomValues(saltBytes);
+    const salt = toHex(saltBytes);
+    const pinHash = hashPin(pin, salt);
+
+    const row = await ctx.db.query("settings").withIndex("by_user", (q) => q.eq("userId", userId)).first();
+    const patch = { pinHash, pinSalt: salt, pinFailedAttempts: 0, pinLockedUntil: undefined };
+    if (row) {
+      await ctx.db.patch(row._id, patch);
+    } else {
+      await ctx.db.insert("settings", { userId, bufferPct: DEFAULT_BUFFER_PCT, ...patch });
+    }
+  },
+});
+
+export const clearPin = mutation({
+  args: {},
+  handler: async (ctx) => {
+    const userId = await getAuthUserId(ctx);
+    if (userId === null) throw new Error("Not authenticated");
+    const row = await ctx.db.query("settings").withIndex("by_user", (q) => q.eq("userId", userId)).first();
+    if (!row) return;
+    await ctx.db.patch(row._id, {
+      pinHash: undefined,
+      pinSalt: undefined,
+      pinFailedAttempts: 0,
+      pinLockedUntil: undefined,
+    });
+  },
+});
+
+const PIN_MAX_ATTEMPTS = 5;
+const PIN_LOCKOUT_MS = 30 * 1000;
+
+export const verifyPin = mutation({
+  args: { pin: v.string() },
+  handler: async (ctx, { pin }) => {
+    const userId = await getAuthUserId(ctx);
+    if (userId === null) throw new Error("Not authenticated");
+    const row = await ctx.db.query("settings").withIndex("by_user", (q) => q.eq("userId", userId)).first();
+    if (!row?.pinHash || !row.pinSalt) return { ok: true as const }; // no PIN set — nothing to gate
+
+    const now = Date.now();
+    if (row.pinLockedUntil && row.pinLockedUntil > now) {
+      const seconds = Math.ceil((row.pinLockedUntil - now) / 1000);
+      return { ok: false as const, lockedForSeconds: seconds };
+    }
+
+    const matches = hashPin(pin, row.pinSalt) === row.pinHash;
+    if (matches) {
+      await ctx.db.patch(row._id, { pinFailedAttempts: 0, pinLockedUntil: undefined });
+      return { ok: true as const };
+    }
+
+    const attempts = (row.pinFailedAttempts ?? 0) + 1;
+    if (attempts >= PIN_MAX_ATTEMPTS) {
+      await ctx.db.patch(row._id, { pinFailedAttempts: 0, pinLockedUntil: now + PIN_LOCKOUT_MS });
+      return { ok: false as const, lockedForSeconds: Math.ceil(PIN_LOCKOUT_MS / 1000) };
+    }
+    await ctx.db.patch(row._id, { pinFailedAttempts: attempts });
+    return { ok: false as const, attemptsRemaining: PIN_MAX_ATTEMPTS - attempts };
   },
 });
 

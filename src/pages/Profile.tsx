@@ -1,4 +1,5 @@
 import { useAuth } from "@/hooks/use-auth";
+import { markSessionUnlocked } from "@/lib/appLockSession";
 import { api } from "@/convex/_generated/api";
 import type { Doc, Id } from "@/convex/_generated/dataModel";
 import { Button } from "@/components/ui/button";
@@ -48,6 +49,7 @@ import {
   Download,
   Info,
   Landmark,
+  Lock,
   Pencil,
   Plus,
   ShieldCheck,
@@ -80,6 +82,8 @@ export default function Profile() {
       </div>
 
       <DisplayNameCard user={user ?? null} />
+
+      <AppLockCard />
 
       {/* Buffer setting */}
       <Card className="card-soft rounded-2xl border-border/60">
@@ -227,6 +231,119 @@ function DisplayNameCard({ user }: { user: Doc<"users"> | null }) {
           </Button>
         )}
       </CardContent>
+    </Card>
+  );
+}
+
+function AppLockCard() {
+  const pinEnabled = useQuery(api.finance.isPinEnabled);
+  const setPin = useMutation(api.finance.setPin);
+  const clearPin = useMutation(api.finance.clearPin);
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [step, setStep] = useState<"enter" | "confirm">("enter");
+  const [first, setFirst] = useState("");
+  const [value, setValue] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  function resetDialog() {
+    setStep("enter");
+    setFirst("");
+    setValue("");
+    setDialogOpen(false);
+  }
+
+  async function handleDigits(next: string) {
+    setValue(next);
+    if (next.length < 4) return;
+    if (step === "enter") {
+      setFirst(next);
+      setValue("");
+      setStep("confirm");
+      return;
+    }
+    if (next !== first) {
+      toast.error("PINs didn't match — try again");
+      setFirst("");
+      setValue("");
+      setStep("enter");
+      return;
+    }
+    setSaving(true);
+    try {
+      await setPin({ pin: next });
+      markSessionUnlocked(); // they just entered it under full auth — no need to re-prompt immediately
+      toast.success("App lock enabled");
+      resetDialog();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to set PIN");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Card className="card-soft rounded-2xl border-border/60">
+      <CardHeader className="pb-2">
+        <CardTitle className="flex items-center gap-2 text-base">
+          <Lock className="size-4 text-primary" />
+          App lock
+        </CardTitle>
+        <CardDescription>
+          Require a PIN to view this app after it's been backgrounded — a quick local check, not
+          a replacement for your sign-in.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="flex items-center justify-between gap-3">
+        <span className="text-sm text-muted-foreground">
+          {pinEnabled === undefined ? "Loading…" : pinEnabled ? "PIN is set" : "No PIN set"}
+        </span>
+        {pinEnabled === undefined ? null : pinEnabled ? (
+          <Button
+            variant="outline"
+            size="sm"
+            className="text-destructive hover:bg-destructive/5 hover:text-destructive"
+            onClick={async () => {
+              try {
+                await clearPin({});
+                toast.success("App lock turned off");
+              } catch (e) {
+                toast.error(e instanceof Error ? e.message : "Failed to turn off");
+              }
+            }}
+          >
+            Turn off
+          </Button>
+        ) : (
+          <Button size="sm" onClick={() => setDialogOpen(true)}>
+            Set PIN
+          </Button>
+        )}
+      </CardContent>
+
+      <Dialog open={dialogOpen} onOpenChange={(o) => !o && resetDialog()}>
+        <DialogContent className="max-w-xs">
+          <DialogHeader>
+            <DialogTitle>{step === "enter" ? "Choose a 4-digit PIN" : "Confirm your PIN"}</DialogTitle>
+            <DialogDescription>
+              {step === "enter"
+                ? "You'll enter this to open the app after it's been backgrounded."
+                : "Enter the same PIN again."}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex justify-center py-2">
+            <Input
+              autoFocus
+              inputMode="numeric"
+              type="password"
+              maxLength={4}
+              value={value}
+              disabled={saving}
+              onChange={(e) => void handleDigits(e.target.value.replace(/\D/g, ""))}
+              className="w-32 text-center text-2xl tracking-[0.5em]"
+            />
+          </div>
+        </DialogContent>
+      </Dialog>
     </Card>
   );
 }
