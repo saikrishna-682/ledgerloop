@@ -4,6 +4,7 @@ import * as React from "react"
 import { Drawer as DrawerPrimitive } from "vaul"
 
 import { cn } from "@/lib/utils"
+import { useVisualViewport } from "@/hooks/use-visual-viewport"
 
 function Drawer({
   ...props
@@ -48,8 +49,18 @@ function DrawerOverlay({
 function DrawerContent({
   className,
   children,
+  style,
   ...props
 }: React.ComponentProps<typeof DrawerPrimitive.Content>) {
+  // The `interactive-widget=resizes-content` viewport meta makes dvh shrink
+  // for the keyboard on modern browsers, but older Safari ignores it and
+  // leaves the layout viewport (and dvh) full-height while the keyboard
+  // covers part of the screen — the visible symptom being a blank gap
+  // between content and the keyboard. window.visualViewport is the one API
+  // that always reports the keyboard's actual on-screen size, so it's used
+  // here as a belt-and-suspenders cap on top of the dvh-based max-height.
+  const { height: vvHeight } = useVisualViewport()
+
   return (
     <DrawerPortal data-slot="drawer-portal">
       <DrawerOverlay />
@@ -57,9 +68,6 @@ function DrawerContent({
         data-slot="drawer-content"
         className={cn(
           "group/drawer-content bg-background fixed z-50 flex h-auto flex-col",
-          // dvh (not vh) so this actually shrinks when the on-screen
-          // keyboard opens, instead of leaving a static, viewport-height
-          // gap between the keyboard and whatever input you're editing.
           // The peek-through margin is also cut down from the shadcn
           // default (6rem) — this drawer is a focused form, not a general
           // sheet that needs a big reveal of the page behind it, and the
@@ -70,6 +78,7 @@ function DrawerContent({
           "data-[vaul-drawer-direction=left]:inset-y-0 data-[vaul-drawer-direction=left]:left-0 data-[vaul-drawer-direction=left]:w-3/4 data-[vaul-drawer-direction=left]:border-r data-[vaul-drawer-direction=left]:sm:max-w-sm",
           className
         )}
+        style={{ ...style, maxHeight: `min(85vh, ${Math.round(vvHeight * 0.9)}px)` }}
         {...props}
       >
         <div className="bg-muted mx-auto mt-4 hidden h-2 w-[100px] shrink-0 rounded-full group-data-[vaul-drawer-direction=bottom]/drawer-content:block" />

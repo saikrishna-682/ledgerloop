@@ -140,7 +140,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </nav>
 
         <Drawer open={addOpen} onOpenChange={setAddOpen}>
-          <DrawerContent className="max-h-[92vh]">
+          <DrawerContent>
             <DrawerHeader className="sr-only">
               <DrawerTitle>Add transaction</DrawerTitle>
               <DrawerDescription>Log income or an expense</DrawerDescription>

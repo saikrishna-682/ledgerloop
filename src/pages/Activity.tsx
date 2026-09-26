@@ -218,7 +218,7 @@ export default function Activity() {
 
       {/* Edit drawer */}
       <Drawer open={editing !== null} onOpenChange={(o) => !o && setEditing(null)}>
-        <DrawerContent className="max-h-[92vh]">
+        <DrawerContent>
           <DrawerHeader className="sr-only">
             <DrawerTitle>Edit transaction</DrawerTitle>
             <DrawerDescription>Update or remove this entry</DrawerDescription>
