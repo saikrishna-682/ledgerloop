@@ -61,8 +61,15 @@ function DrawerContent({
           // default (6rem) — this drawer is a focused form, not a general
           // sheet that needs a big reveal of the page behind it, and the
           // smaller margin leaves more room once the keyboard is up.
-          "data-[vaul-drawer-direction=top]:inset-x-0 data-[vaul-drawer-direction=top]:top-0 data-[vaul-drawer-direction=top]:mb-8 data-[vaul-drawer-direction=top]:max-h-[85dvh] data-[vaul-drawer-direction=top]:rounded-b-lg data-[vaul-drawer-direction=top]:border-b",
-          "data-[vaul-drawer-direction=bottom]:inset-x-0 data-[vaul-drawer-direction=bottom]:bottom-0 data-[vaul-drawer-direction=bottom]:mt-8 data-[vaul-drawer-direction=bottom]:max-h-[85dvh] data-[vaul-drawer-direction=bottom]:rounded-t-lg data-[vaul-drawer-direction=bottom]:border-t",
+          // md:max-w-md + md:mx-auto matches AppShell's phone-frame column so
+          // a bottom/top sheet doesn't stretch edge-to-edge on wide screens.
+          // Deliberately NOT transform-based (no translate-x centering trick):
+          // vaul drives its own `transform` inline (drag) and via keyframes
+          // (open/close slide) on this element, and either would clobber a
+          // transform we set here. Centering via inset-x-0 + max-w + mx-auto
+          // needs no transform, so it can't conflict.
+          "data-[vaul-drawer-direction=top]:inset-x-0 data-[vaul-drawer-direction=top]:top-0 data-[vaul-drawer-direction=top]:mb-8 data-[vaul-drawer-direction=top]:max-h-[85dvh] data-[vaul-drawer-direction=top]:rounded-b-lg data-[vaul-drawer-direction=top]:border-b md:data-[vaul-drawer-direction=top]:max-w-md md:data-[vaul-drawer-direction=top]:mx-auto",
+          "data-[vaul-drawer-direction=bottom]:inset-x-0 data-[vaul-drawer-direction=bottom]:bottom-0 data-[vaul-drawer-direction=bottom]:mt-8 data-[vaul-drawer-direction=bottom]:max-h-[85dvh] data-[vaul-drawer-direction=bottom]:rounded-t-lg data-[vaul-drawer-direction=bottom]:border-t md:data-[vaul-drawer-direction=bottom]:max-w-md md:data-[vaul-drawer-direction=bottom]:mx-auto",
           "data-[vaul-drawer-direction=right]:inset-y-0 data-[vaul-drawer-direction=right]:right-0 data-[vaul-drawer-direction=right]:w-3/4 data-[vaul-drawer-direction=right]:border-l data-[vaul-drawer-direction=right]:sm:max-w-sm",
           "data-[vaul-drawer-direction=left]:inset-y-0 data-[vaul-drawer-direction=left]:left-0 data-[vaul-drawer-direction=left]:w-3/4 data-[vaul-drawer-direction=left]:border-r data-[vaul-drawer-direction=left]:sm:max-w-sm",
           className

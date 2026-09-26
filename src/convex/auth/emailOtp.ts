@@ -1,6 +1,31 @@
 import { Email } from "@convex-dev/auth/providers/Email";
 import { RandomReader, generateRandomString } from "@oslojs/crypto/random";
 
+// Best-effort, in-memory sliding window: the Email provider's
+// sendVerificationRequest callback gets no Convex ctx (only the Phone
+// provider does — confirmed in @auth/core's actual type), so there's no way
+// to check a durable, cross-instance counter from here. This still stops a
+// basic same-isolate spam script from hammering one address, it just isn't
+// a durable/distributed guarantee — it resets on cold start and isn't
+// shared across concurrent instances of the function.
+const WINDOW_MS = 10 * 60 * 1000;
+const MAX_PER_WINDOW = 3;
+const sendLog = new Map<string, { windowStart: number; count: number }>();
+
+function checkOtpRateLimit(identifier: string): { ok: true } | { ok: false; retryAfterSeconds: number } {
+  const now = Date.now();
+  const entry = sendLog.get(identifier);
+  if (!entry || now - entry.windowStart > WINDOW_MS) {
+    sendLog.set(identifier, { windowStart: now, count: 1 });
+    return { ok: true };
+  }
+  if (entry.count >= MAX_PER_WINDOW) {
+    return { ok: false, retryAfterSeconds: Math.ceil((entry.windowStart + WINDOW_MS - now) / 1000) };
+  }
+  entry.count++;
+  return { ok: true };
+}
+
 // Previously relayed every sign-in code through a third-party vly.ai/
 // freebuff.app endpoint using an API key hardcoded in this file (visible to
 // anyone who can read the repo). That meant every user's email address and
@@ -21,6 +46,14 @@ export const emailOtp = Email({
     return generateRandomString(random, alphabet, 6);
   },
   async sendVerificationRequest({ identifier: email, token }) {
+    const normalized = email.trim().toLowerCase();
+    const limit = checkOtpRateLimit(normalized);
+    if (!limit.ok) {
+      throw new Error(
+        `Too many sign-in codes requested for this email. Try again in ${limit.retryAfterSeconds}s.`,
+      );
+    }
+
     const apiKey = process.env.RESEND_API_KEY;
     if (!apiKey) {
       throw new Error(

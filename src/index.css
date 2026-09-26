@@ -1,9 +1,9 @@
 /* DO NOT CHANGE */
 @import "tailwindcss";
 @import "tw-animate-css";
-@custom-variant dark (&:is(.dark *));
-
 @import url("https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400..800&display=swap");
+
+@custom-variant dark (&:is(.dark *));
 
 /* DO NOT CHANGE */
 @theme inline {
