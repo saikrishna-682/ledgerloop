@@ -8,6 +8,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { api } from "@/convex/_generated/api";
 import type { Doc } from "@/convex/_generated/dataModel";
 import { iconByName } from "@/lib/icons";
+import { computeSpendingInsights } from "@/lib/insights";
 import { currentMonthKey, friendlyDate, todayStr } from "@/lib/months";
 import { formatCents } from "@/lib/money";
 import { cn } from "@/lib/utils";
@@ -17,8 +18,11 @@ import {
   ArrowDownLeft,
   ArrowRight,
   ArrowUpRight,
+  Lightbulb,
   PiggyBank,
+  Scale,
   ShieldCheck,
+  TrendingDown,
   TrendingUp,
   Wallet,
 } from "lucide-react";
@@ -42,8 +46,14 @@ export default function Home() {
   const recent = useQuery(api.finance.listTransactions, {}) ?? [];
   const trend = useQuery(api.finance.getTrend, { months: 6 }) ?? [];
   const budgets = useQuery(api.finance.listBudgetsWithProgress, { monthKey }) ?? [];
+  const debts = useQuery(api.finance.listDebts) ?? [];
   const recurring = useMemo(() => detectRecurring(recent), [recent]);
   const openAdd = useOpenAddTxn();
+
+  const insights = useMemo(() => {
+    const currentMonthTxns = recent.filter((t) => t.date.startsWith(monthKey));
+    return computeSpendingInsights(currentMonthTxns, trend);
+  }, [recent, trend, monthKey]);
 
   const greeting = (() => {
     const h = new Date().getHours();
@@ -62,6 +72,8 @@ export default function Home() {
     );
   }
 
+  const totalDebtCents = debts.reduce((sum, d) => sum + d.balanceCents, 0);
+  const netWorthCents = stats.balanceCents - totalDebtCents;
   const safeRemaining = stats.safeRemainingCents;
   const safeTotal = Math.max(1, stats.safeToSpendCents);
   const usedPct = Math.min(100, Math.round((stats.safeSpentCents / safeTotal) * 100));
@@ -141,6 +153,65 @@ export default function Home() {
           />
         </div>
       </Card>
+
+      {/* Net worth */}
+      <Card className="card-soft rounded-2xl border-border/60">
+        <CardContent className="flex items-center gap-3 px-5 py-4">
+          <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-accent">
+            <Scale className="size-4 text-accent-foreground" />
+          </span>
+          <div className="min-w-0 flex-1">
+            <p className="text-xs font-medium text-muted-foreground">Net worth</p>
+            <p className="money text-xl font-bold leading-tight">{formatCents(netWorthCents)}</p>
+          </div>
+          {totalDebtCents > 0 && (
+            <span className="text-right text-xs text-muted-foreground">
+              {formatCents(stats.balanceCents)} in accounts
+              <br />− {formatCents(totalDebtCents)} in debts
+            </span>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Insights */}
+      {(insights.biggestExpense || insights.topMerchant || insights.monthOverMonthPct !== null) && (
+        <Card className="card-soft rounded-2xl border-border/60">
+          <div className="flex items-center gap-1.5 px-5 pb-1 pt-4">
+            <Lightbulb className="size-4 text-primary" />
+            <h2 className="text-sm font-semibold">Insights</h2>
+          </div>
+          <CardContent className="flex flex-col gap-2 px-5 py-3 text-sm">
+            {insights.biggestExpense && (
+              <p>
+                Biggest expense this month:{" "}
+                <span className="font-medium">{insights.biggestExpense.merchant}</span> at{" "}
+                <span className="money font-medium">{formatCents(insights.biggestExpense.amountCents)}</span>
+              </p>
+            )}
+            {insights.topMerchant && insights.topMerchant.count > 1 && (
+              <p>
+                Most spent at <span className="font-medium">{insights.topMerchant.merchant}</span>:{" "}
+                <span className="money font-medium">{formatCents(insights.topMerchant.totalCents)}</span> across{" "}
+                {insights.topMerchant.count} transactions
+              </p>
+            )}
+            {insights.monthOverMonthPct !== null && (
+              <p className="flex items-center gap-1.5">
+                {insights.monthOverMonthPct > 0 ? (
+                  <TrendingUp className="size-4 shrink-0 text-destructive" />
+                ) : (
+                  <TrendingDown className="size-4 shrink-0 text-primary" />
+                )}
+                Spending is{" "}
+                <span className="font-medium">
+                  {Math.abs(insights.monthOverMonthPct)}% {insights.monthOverMonthPct > 0 ? "higher" : "lower"}
+                </span>{" "}
+                than last month
+              </p>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       {/* This month */}
       <Card className="card-soft rounded-2xl border-border/60">
