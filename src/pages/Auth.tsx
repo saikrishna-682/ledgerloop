@@ -126,9 +126,13 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
       stashGuestIdIfAny();
       await signIn("email-otp", formData);
 
-      console.log("signed in");
-
-      navigate(redirect);
+      // A client-side navigate() here left stale state visible (e.g. the
+      // guest's old name/data) until a manual refresh — the guest->real
+      // identity switch and the claimGuestData migration that follows it
+      // don't fully propagate through a same-page SPA transition. A real
+      // navigation forces the whole app to remount against the now-correct
+      // signed-in identity, the same way a manual refresh "fixed" it.
+      window.location.href = redirect;
     } catch (error) {
       console.error("OTP verification error:", error);
 

@@ -1,4 +1,4 @@
-import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
 import { Moon, Sun } from "lucide-react";
 import { useEffect, useState } from "react";
 
@@ -33,8 +33,7 @@ export function ThemeToggle() {
     setMounted(true);
   }, []);
 
-  function toggle() {
-    const next = !isDark;
+  function toggle(next: boolean) {
     setIsDark(next);
     applyTheme(next);
     try {
@@ -45,14 +44,13 @@ export function ThemeToggle() {
   }
 
   return (
-    <Button
-      variant="ghost"
-      size="icon"
-      className="size-8 text-muted-foreground"
-      aria-label="Toggle dark mode"
-      onClick={toggle}
+    <label
+      className="flex items-center gap-1.5"
+      aria-label={mounted && isDark ? "Switch to light mode" : "Switch to dark mode"}
     >
-      {mounted && isDark ? <Sun className="size-4" /> : <Moon className="size-4" />}
-    </Button>
+      <Sun className="size-3.5 text-muted-foreground" />
+      <Switch checked={mounted && isDark} onCheckedChange={toggle} className="scale-90" />
+      <Moon className="size-3.5 text-muted-foreground" />
+    </label>
   );
 }
