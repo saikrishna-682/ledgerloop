@@ -132,6 +132,41 @@
   }
 }
 
+@keyframes bill-flip {
+  0%, 12% {
+    transform: rotateX(0deg);
+  }
+  50% {
+    transform: rotateX(180deg);
+  }
+  88%, 100% {
+    transform: rotateX(360deg);
+  }
+}
+
+@keyframes bill-flip-shade {
+  0%, 45% {
+    opacity: 0;
+  }
+  50%, 88% {
+    opacity: 1;
+  }
+  93%, 100% {
+    opacity: 0;
+  }
+}
+
+@keyframes coin-pop {
+  0%, 100% {
+    transform: translateY(0);
+    opacity: 0.35;
+  }
+  50% {
+    transform: translateY(-5px);
+    opacity: 1;
+  }
+}
+
 @layer utilities {
   /* Money is always set in tabular figures so columns and counters align. */
   .money {

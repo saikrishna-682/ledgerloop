@@ -9,6 +9,7 @@ import { useMutation } from "convex/react";
 import { api } from "./convex/_generated/api";
 import type { Id } from "./convex/_generated/dataModel";
 import { PENDING_GUEST_CLAIM_KEY } from "@/lib/guestClaim";
+import { MoneyLoader } from "@/components/MoneyLoader";
 import { BrowserRouter, Route, Routes, useLocation } from "react-router";
 import "./index.css";
 
@@ -62,14 +63,18 @@ function SeedOnMount({ children }: { children: React.ReactNode }) {
       setSeeded(true);
     })();
   }, [claimGuestData, seed]);
-  return seeded ? <>{children}</> : null;
+  return seeded ? (
+    <>{children}</>
+  ) : (
+    <RouteLoading />
+  );
 }
 
-// Simple loading fallback for route transitions
+// Loading fallback for route transitions and the initial seeding step.
 function RouteLoading() {
   return (
     <div className="min-h-screen flex items-center justify-center">
-      <div className="animate-pulse text-muted-foreground">Loading...</div>
+      <MoneyLoader />
     </div>
   );
 }
