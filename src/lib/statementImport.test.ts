@@ -89,6 +89,51 @@ describe("parsePdfStatementText", () => {
     ]);
   });
 
+  it("parses dash-separated day-month-name dates and prefers trailing remarks text as the merchant (e.g. GTBank-style statements)", () => {
+    const text = "03-Mar-2017 3310001885 03-Mar-2017 3,000.00 39.82 CASH WITHDRAWAL FROM OUR ATM";
+    const { transactions } = parsePdfStatementText(text);
+    expect(transactions).toEqual([
+      {
+        date: "2017-03-03",
+        merchant: expect.stringContaining("CASH WITHDRAWAL"),
+        amountCents: 300000,
+        type: "expense",
+      },
+    ]);
+  });
+
+  it("finds the amount even when a non-decimal reference number follows it", () => {
+    // Real "Checks Paid" row shape: Date | Check # | Amount | Reference Number.
+    // A naive "amount must be the last token" parser drops this row entirely
+    // because the reference number (no decimal point) is what's actually last.
+    const text = "Statement Date: June 5, 2003\n05-12 1001 75.00 00012576589";
+    const { transactions } = parsePdfStatementText(text);
+    expect(transactions).toEqual([
+      { date: "2003-05-12", merchant: expect.any(String), amountCents: 7500, type: "expense" },
+    ]);
+  });
+
+  it("finds the date even when it's not the first token on the line", () => {
+    // Real deposit-row shape: "Deposit  Ref Nbr: 130012345   05-15   $3,615.08"
+    // — the description precedes the date instead of following it.
+    const text = "Statement Date: June 5, 2003\nDeposit Ref Nbr: 130012345 05-15 $3,615.08";
+    const { transactions } = parsePdfStatementText(text);
+    expect(transactions).toEqual([
+      {
+        date: "2003-05-15",
+        merchant: expect.stringContaining("Deposit"),
+        amountCents: 361508,
+        type: "income", // "Deposit" in the description is a strong direction signal on its own
+      },
+    ]);
+  });
+
+  it("uses description keywords for direction when the amount has no sign (many checking-account statements never sign amounts at all)", () => {
+    const text = "01-Mar-2017 0 01-Mar-2017 5,000.00 8,039.82 TRANSFER inward FBNMOBILE received";
+    const { transactions } = parsePdfStatementText(text);
+    expect(transactions[0].type).toBe("income");
+  });
+
   it("warns when nothing matches (e.g. a scanned/image PDF)", () => {
     const { transactions, warnings } = parsePdfStatementText("just some prose, no line items here");
     expect(transactions).toEqual([]);
