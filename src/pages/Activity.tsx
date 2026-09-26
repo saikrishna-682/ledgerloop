@@ -44,6 +44,7 @@ export default function Activity() {
     toDate: `${monthKey}-${String(daysInMonth(monthKey)).padStart(2, "0")}`,
   });
   const removeTxn = useMutation(api.finance.deleteTransaction);
+  const addTxn = useMutation(api.finance.addTransaction);
   const isCurrent = monthKey === currentMonthKey();
 
   const filteredTxns = useMemo(() => {
@@ -252,9 +253,28 @@ export default function Activity() {
         onClose={() => setDeleting(null)}
         onConfirm={async () => {
           if (!deleting) return;
+          const restore = {
+            type: deleting.type,
+            amountCents: deleting.amountCents,
+            date: deleting.date,
+            merchant: deleting.merchant,
+            categoryId: deleting.categoryId,
+            accountId: deleting.accountId,
+            note: deleting.note,
+          };
           try {
             await removeTxn({ id: deleting._id });
-            toast.success("Transaction deleted");
+            toast.success("Transaction deleted", {
+              action: {
+                label: "Undo",
+                onClick: () => {
+                  addTxn(restore).catch(() =>
+                    toast.error("Couldn't restore that transaction"),
+                  );
+                },
+              },
+              duration: 6000,
+            });
           } catch (e) {
             toast.error(e instanceof Error ? e.message : "Failed to delete");
           } finally {
@@ -281,8 +301,8 @@ function DeleteConfirm({
         <DrawerHeader>
           <DrawerTitle>Delete this transaction?</DrawerTitle>
           <DrawerDescription>
-            {target ? `${target.merchant} · ${formatCents(target.amountCents)}` : ""} — this
-            cannot be undone.
+            {target ? `${target.merchant} · ${formatCents(target.amountCents)}` : ""} — you'll
+            get a few seconds to undo this after.
           </DrawerDescription>
         </DrawerHeader>
         <div className="flex gap-2 px-4 pb-6 pt-2">
