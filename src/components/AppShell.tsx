@@ -17,6 +17,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useAuth } from "@/hooks/use-auth";
+import { useBodyScrollLock } from "@/hooks/use-body-scroll-lock";
 import { api } from "@/convex/_generated/api";
 import { formatMonthKey, currentMonthKey } from "@/lib/months";
 import { cn } from "@/lib/utils";
@@ -48,6 +49,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const location = useLocation();
   const navigate = useNavigate();
   const [addOpen, setAddOpen] = useState(false);
+  useBodyScrollLock(addOpen);
 
   return (
     <OpenAddContext.Provider value={() => setAddOpen(true)}>

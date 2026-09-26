@@ -19,6 +19,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { api } from "@/convex/_generated/api";
 import type { Doc, Id } from "@/convex/_generated/dataModel";
+import { useBodyScrollLock } from "@/hooks/use-body-scroll-lock";
 import { currentMonthKey, daysInMonth, formatMonthKey, friendlyDate, shiftMonthKey, todayStr } from "@/lib/months";
 import { formatCents } from "@/lib/money";
 import { cn } from "@/lib/utils";
@@ -30,6 +31,7 @@ import { toast } from "sonner";
 export default function Activity() {
   const [monthKey, setMonthKey] = useState(currentMonthKey());
   const [editing, setEditing] = useState<Doc<"transactions"> | null>(null);
+  useBodyScrollLock(editing !== null);
   const [deleting, setDeleting] = useState<Doc<"transactions"> | null>(null);
   const [search, setSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState<string>("all");

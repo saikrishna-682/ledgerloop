@@ -4,7 +4,6 @@ import * as React from "react"
 import { Drawer as DrawerPrimitive } from "vaul"
 
 import { cn } from "@/lib/utils"
-import { useVisualViewport } from "@/hooks/use-visual-viewport"
 
 function Drawer({
   ...props
@@ -49,18 +48,8 @@ function DrawerOverlay({
 function DrawerContent({
   className,
   children,
-  style,
   ...props
 }: React.ComponentProps<typeof DrawerPrimitive.Content>) {
-  // The `interactive-widget=resizes-content` viewport meta makes dvh shrink
-  // for the keyboard on modern browsers, but older Safari ignores it and
-  // leaves the layout viewport (and dvh) full-height while the keyboard
-  // covers part of the screen — the visible symptom being a blank gap
-  // between content and the keyboard. window.visualViewport is the one API
-  // that always reports the keyboard's actual on-screen size, so it's used
-  // here as a belt-and-suspenders cap on top of the dvh-based max-height.
-  const { height: vvHeight } = useVisualViewport()
-
   return (
     <DrawerPortal data-slot="drawer-portal">
       <DrawerOverlay />
@@ -78,7 +67,6 @@ function DrawerContent({
           "data-[vaul-drawer-direction=left]:inset-y-0 data-[vaul-drawer-direction=left]:left-0 data-[vaul-drawer-direction=left]:w-3/4 data-[vaul-drawer-direction=left]:border-r data-[vaul-drawer-direction=left]:sm:max-w-sm",
           className
         )}
-        style={{ ...style, maxHeight: `min(85vh, ${Math.round(vvHeight * 0.9)}px)` }}
         {...props}
       >
         <div className="bg-muted mx-auto mt-4 hidden h-2 w-[100px] shrink-0 rounded-full group-data-[vaul-drawer-direction=bottom]/drawer-content:block" />
