@@ -185,13 +185,15 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
   };
 
   return (
-    <div className="min-h-screen flex flex-col">
-
-      
+    <div className="min-h-screen bg-muted/40">
+      {/* Locked to the same phone-width frame as every other page (see
+          Landing.tsx/AppShell.tsx) so navigating here from "Get started"
+          doesn't shift the content's width/edges on wider screens. */}
+      <div className="mx-auto flex min-h-screen w-full max-w-md flex-col bg-background md:border-x md:border-border/60">
       {/* Auth Content */}
       <div className="flex-1 flex items-center justify-center">
-        <div className="flex items-center justify-center h-full flex-col">
-        <Card className="min-w-[350px] border shadow-md">
+        <div className="flex items-center justify-center h-full flex-col w-full px-4">
+        <Card className="w-full border shadow-md">
           {step === "signIn" ? (
             <>
               <CardHeader className="text-center">
@@ -364,6 +366,7 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
           )}
         </Card>
         </div>
+      </div>
       </div>
     </div>
   );
