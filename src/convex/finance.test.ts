@@ -548,3 +548,61 @@ describe("budgets", () => {
     expect(matches[0].monthlyCents).toBe(7500);
   });
 });
+
+describe("savings goals", () => {
+  it("creates a goal starting at zero saved", async () => {
+    const t = newTest();
+    const { as } = await asNewUser(t);
+    await as.mutation(api.finance.createGoal, { name: "Trip to Japan", targetCents: 200000 });
+    const goals = await as.query(api.finance.listGoals, {});
+    expect(goals).toHaveLength(1);
+    expect(goals[0]).toMatchObject({ name: "Trip to Japan", targetCents: 200000, savedCents: 0 });
+  });
+
+  it("contributions accumulate and withdrawals can't go negative", async () => {
+    const t = newTest();
+    const { as } = await asNewUser(t);
+    const id = await as.mutation(api.finance.createGoal, { name: "Emergency fund", targetCents: 500000 });
+
+    await as.mutation(api.finance.contributeToGoal, { id, deltaCents: 10000 });
+    await as.mutation(api.finance.contributeToGoal, { id, deltaCents: 5000 });
+    let goals = await as.query(api.finance.listGoals, {});
+    expect(goals[0].savedCents).toBe(15000);
+
+    await as.mutation(api.finance.contributeToGoal, { id, deltaCents: -100000 });
+    goals = await as.query(api.finance.listGoals, {});
+    expect(goals[0].savedCents).toBe(0);
+  });
+
+  it("rejects a non-positive target", async () => {
+    const t = newTest();
+    const { as } = await asNewUser(t);
+    await expect(as.mutation(api.finance.createGoal, { name: "Bad", targetCents: 0 })).rejects.toThrow();
+  });
+
+  it("enforces ownership on update/contribute/delete", async () => {
+    const t = newTest();
+    const owner = await asNewUser(t);
+    const attacker = await asNewUser(t);
+    const id = await owner.as.mutation(api.finance.createGoal, { name: "Mine", targetCents: 10000 });
+
+    await expect(
+      attacker.as.mutation(api.finance.updateGoal, { id, name: "Hijacked", targetCents: 1 }),
+    ).rejects.toThrow();
+    await expect(
+      attacker.as.mutation(api.finance.contributeToGoal, { id, deltaCents: 100 }),
+    ).rejects.toThrow();
+    await expect(attacker.as.mutation(api.finance.deleteGoal, { id })).rejects.toThrow();
+
+    const goals = await owner.as.query(api.finance.listGoals, {});
+    expect(goals[0].name).toBe("Mine");
+  });
+
+  it("deleteGoal removes it from the list", async () => {
+    const t = newTest();
+    const { as } = await asNewUser(t);
+    const id = await as.mutation(api.finance.createGoal, { name: "Temp", targetCents: 1000 });
+    await as.mutation(api.finance.deleteGoal, { id });
+    expect(await as.query(api.finance.listGoals, {})).toHaveLength(0);
+  });
+});

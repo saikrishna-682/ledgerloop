@@ -987,3 +987,82 @@ export const deleteDebt = mutation({
     await ctx.db.delete(id);
   },
 });
+
+// ---------------------------------------------------------------------------
+// Savings goals — envelope-style. Progress is a manually-tracked savedCents
+// balance (contribute/withdraw), not derived from transactions or accounts,
+// so a goal can stand for money set aside however the user actually manages it.
+// ---------------------------------------------------------------------------
+
+export const listGoals = query({
+  args: {},
+  handler: async (ctx) => {
+    const userId = await getAuthUserId(ctx);
+    if (userId === null) throw new Error("Not authenticated");
+    const rows = await ctx.db.query("goals").withIndex("by_user", (q) => q.eq("userId", userId)).collect();
+    return rows.filter((r) => !r.archived).sort((a, b) => a._creationTime - b._creationTime);
+  },
+});
+
+export const createGoal = mutation({
+  args: {
+    name: v.string(),
+    targetCents: v.number(),
+    targetDate: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const userId = await getAuthUserId(ctx);
+    if (userId === null) throw new Error("Not authenticated");
+    if (args.targetCents <= 0) throw new Error("Target must be greater than zero");
+    if (args.targetDate && !/^\d{4}-\d{2}-\d{2}$/.test(args.targetDate)) throw new Error("Invalid date");
+    return await ctx.db.insert("goals", {
+      userId,
+      name: requireName(args.name),
+      targetCents: args.targetCents,
+      targetDate: args.targetDate,
+      savedCents: 0,
+    });
+  },
+});
+
+export const updateGoal = mutation({
+  args: {
+    id: v.id("goals"),
+    name: v.string(),
+    targetCents: v.number(),
+    targetDate: v.optional(v.string()),
+  },
+  handler: async (ctx, { id, ...patch }) => {
+    const userId = await getAuthUserId(ctx);
+    if (userId === null) throw new Error("Not authenticated");
+    const existing = await ctx.db.get(id);
+    if (!existing || existing.userId !== userId) throw new Error("Goal not found");
+    if (patch.targetCents <= 0) throw new Error("Target must be greater than zero");
+    if (patch.targetDate && !/^\d{4}-\d{2}-\d{2}$/.test(patch.targetDate)) throw new Error("Invalid date");
+    await ctx.db.patch(id, { name: requireName(patch.name), targetCents: patch.targetCents, targetDate: patch.targetDate });
+  },
+});
+
+export const contributeToGoal = mutation({
+  args: { id: v.id("goals"), deltaCents: v.number() },
+  handler: async (ctx, { id, deltaCents }) => {
+    const userId = await getAuthUserId(ctx);
+    if (userId === null) throw new Error("Not authenticated");
+    const existing = await ctx.db.get(id);
+    if (!existing || existing.userId !== userId) throw new Error("Goal not found");
+    const savedCents = Math.max(0, existing.savedCents + deltaCents);
+    await ctx.db.patch(id, { savedCents });
+    return savedCents;
+  },
+});
+
+export const deleteGoal = mutation({
+  args: { id: v.id("goals") },
+  handler: async (ctx, { id }) => {
+    const userId = await getAuthUserId(ctx);
+    if (userId === null) throw new Error("Not authenticated");
+    const existing = await ctx.db.get(id);
+    if (!existing || existing.userId !== userId) throw new Error("Goal not found");
+    await ctx.db.delete(id);
+  },
+});

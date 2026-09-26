@@ -56,6 +56,7 @@ import {
   Plus,
   ShieldCheck,
   Sparkles,
+  Target,
   Trash2,
   Wallet,
 } from "lucide-react";
@@ -138,6 +139,8 @@ export default function Profile() {
       <BudgetsCard categories={categories} />
       {/* Debts */}
       <DebtsCard />
+      {/* Savings goals */}
+      <GoalsCard />
       {/* Money guidelines */}
       {stats && <MoneyGuidelinesCard stats={stats} age={settings?.age} />}
       {/* Import */}
@@ -1228,6 +1231,213 @@ function DebtsCard() {
           snowball={snowball}
         />
       )}
+    </>
+  );
+}
+
+function GoalsCard() {
+  const goals = useQuery(api.finance.listGoals) ?? [];
+  const create = useMutation(api.finance.createGoal);
+  const update = useMutation(api.finance.updateGoal);
+  const contribute = useMutation(api.finance.contributeToGoal);
+  const remove = useMutation(api.finance.deleteGoal);
+
+  const [open, setOpen] = useState(false);
+  const [editing, setEditing] = useState<Doc<"goals"> | null>(null);
+  const [name, setName] = useState("");
+  const [target, setTarget] = useState("");
+  const [targetDate, setTargetDate] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [contributingId, setContributingId] = useState<Id<"goals"> | null>(null);
+  const [amount, setAmount] = useState("");
+
+  function openNew() {
+    setEditing(null);
+    setName("");
+    setTarget("");
+    setTargetDate("");
+    setOpen(true);
+  }
+
+  function openEdit(g: Doc<"goals">) {
+    setEditing(g);
+    setName(g.name);
+    setTarget(centsToInput(g.targetCents));
+    setTargetDate(g.targetDate ?? "");
+    setOpen(true);
+  }
+
+  async function submit() {
+    const targetCents = parseAmountToCents(target || "0");
+    if (!name.trim() || targetCents === null || targetCents <= 0) {
+      toast.error("Enter a name and a target amount greater than zero");
+      return;
+    }
+    setSaving(true);
+    try {
+      if (editing) {
+        await update({
+          id: editing._id,
+          name: name.trim(),
+          targetCents,
+          targetDate: targetDate || undefined,
+        });
+        toast.success("Goal updated");
+      } else {
+        await create({ name: name.trim(), targetCents, targetDate: targetDate || undefined });
+        toast.success("Goal added");
+      }
+      setOpen(false);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to save");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function submitContribution(id: Id<"goals">, sign: 1 | -1) {
+    const cents = parseAmountToCents(amount || "0");
+    if (cents === null || cents <= 0) {
+      toast.error("Enter an amount greater than zero");
+      return;
+    }
+    try {
+      await contribute({ id, deltaCents: cents * sign });
+      setContributingId(null);
+      setAmount("");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to update");
+    }
+  }
+
+  return (
+    <>
+      <Card className="card-soft rounded-2xl border-border/60">
+        <CardHeader className="flex-row items-center justify-between space-y-0 pb-2">
+          <div>
+            <CardTitle className="text-base">Savings goals</CardTitle>
+            <CardDescription>Set money aside for something specific.</CardDescription>
+          </div>
+          <Button size="sm" variant="outline" className="gap-1.5" onClick={openNew}>
+            <Plus className="size-4" /> Add
+          </Button>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-3">
+          {goals.length === 0 && (
+            <p className="py-2 text-sm text-muted-foreground">
+              No goals yet — add one to start setting money aside.
+            </p>
+          )}
+          {goals.map((g) => {
+            const pct = Math.min(100, Math.round((g.savedCents / g.targetCents) * 100));
+            const reached = g.savedCents >= g.targetCents;
+            return (
+              <div key={g._id} className="rounded-xl border border-border/60 p-3">
+                <div className="flex items-center gap-3">
+                  <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-accent">
+                    <Target className="size-4 text-accent-foreground" />
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-medium">{g.name}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {formatCents(g.savedCents)} of {formatCents(g.targetCents)}
+                      {g.targetDate ? ` · by ${g.targetDate}` : ""}
+                    </p>
+                  </div>
+                  <Button variant="ghost" size="icon" className="size-8" onClick={() => openEdit(g)}>
+                    <Pencil className="size-3.5 text-muted-foreground" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="size-8"
+                    aria-label={`Delete ${g.name}`}
+                    onClick={() => void remove({ id: g._id }).then(() => toast.success("Goal removed"))}
+                  >
+                    <Trash2 className="size-3.5 text-muted-foreground" />
+                  </Button>
+                </div>
+                <Progress value={pct} className="mt-2 h-2" />
+                {reached ? (
+                  <p className="mt-2 text-xs font-medium text-primary">Goal reached 🎉</p>
+                ) : contributingId === g._id ? (
+                  <div className="mt-2 flex items-center gap-2">
+                    <Input
+                      autoFocus
+                      inputMode="decimal"
+                      placeholder="Amount"
+                      value={amount}
+                      onChange={(e) => setAmount(e.target.value)}
+                      className="h-8"
+                    />
+                    <Button size="sm" onClick={() => void submitContribution(g._id, 1)}>
+                      Add
+                    </Button>
+                    <Button size="sm" variant="ghost" onClick={() => void submitContribution(g._id, -1)}>
+                      Withdraw
+                    </Button>
+                  </div>
+                ) : (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="mt-1.5 h-7 px-2 text-xs"
+                    onClick={() => {
+                      setContributingId(g._id);
+                      setAmount("");
+                    }}
+                  >
+                    Add or withdraw money
+                  </Button>
+                )}
+              </div>
+            );
+          })}
+        </CardContent>
+      </Card>
+
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>{editing ? "Edit goal" : "New goal"}</DialogTitle>
+          </DialogHeader>
+          <div className="flex flex-col gap-3">
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="goal-name">Name</Label>
+              <Input
+                id="goal-name"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="e.g. Trip to Japan"
+              />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="goal-target">Target amount</Label>
+              <Input
+                id="goal-target"
+                inputMode="decimal"
+                value={target}
+                onChange={(e) => setTarget(e.target.value)}
+                placeholder="0.00"
+              />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="goal-date">Target date (optional)</Label>
+              <Input
+                id="goal-date"
+                type="date"
+                value={targetDate}
+                onChange={(e) => setTargetDate(e.target.value)}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button onClick={() => void submit()} disabled={saving}>
+              {editing ? "Save changes" : "Add goal"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }
