@@ -1,4 +1,4 @@
-import { Switch } from "@/components/ui/switch";
+import * as SwitchPrimitive from "@radix-ui/react-switch";
 import { Moon, Sun } from "lucide-react";
 import { useEffect, useState } from "react";
 
@@ -43,14 +43,20 @@ export function ThemeToggle() {
     }
   }
 
+  const checked = mounted && isDark;
+
   return (
-    <label
-      className="flex items-center gap-1.5"
-      aria-label={mounted && isDark ? "Switch to light mode" : "Switch to dark mode"}
+    <SwitchPrimitive.Root
+      checked={checked}
+      onCheckedChange={toggle}
+      aria-label={checked ? "Switch to light mode" : "Switch to dark mode"}
+      className="relative inline-flex h-6 w-11 shrink-0 items-center rounded-full bg-muted transition-colors data-[state=checked]:bg-primary/20 outline-none focus-visible:ring-2 focus-visible:ring-ring"
     >
-      <Sun className="size-3.5 text-muted-foreground" />
-      <Switch checked={mounted && isDark} onCheckedChange={toggle} className="scale-90" />
-      <Moon className="size-3.5 text-muted-foreground" />
-    </label>
+      <SwitchPrimitive.Thumb
+        className="flex size-5 translate-x-0.5 items-center justify-center rounded-full bg-background text-foreground shadow-sm transition-transform data-[state=checked]:translate-x-[22px] data-[state=checked]:bg-foreground data-[state=checked]:text-background"
+      >
+        {checked ? <Moon className="size-3" /> : <Sun className="size-3" />}
+      </SwitchPrimitive.Thumb>
+    </SwitchPrimitive.Root>
   );
 }
